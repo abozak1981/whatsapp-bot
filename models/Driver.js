@@ -13,6 +13,22 @@ const driverSchema = new mongoose.Schema({
     isAvailable: {
         type: Boolean,
         default: true,
+    },
+    totalDeliveries: {
+        type: Number,
+        default: 0,
+    },
+    totalEarnings: {
+        type: Number,
+        default: 0,
+    },
+    cashCollected: {
+        type: Number,
+        default: 0,
+    },
+    walletBalance: {
+        type: Number,
+        default: 0,
     }
 });
 

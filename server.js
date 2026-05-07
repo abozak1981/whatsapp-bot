@@ -176,14 +176,64 @@ app.post("/webhook", async (req, res) => {
                                 orderToClaim.assignedDriver = from;
                                 await orderToClaim.save();
 
+                                // Update Driver Wallet
+                                const ledgerEntry = await Ledger.findOne({ orderId: orderToClaim._id });
+                                let orderTotal = ledgerEntry ? ledgerEntry.totalAmount : 0;
+                                
+                                let deliveryFee = process.env.DELIVERY_FEE ? parseFloat(process.env.DELIVERY_FEE) : 15.0;
+                                let cashToCollect = orderTotal + deliveryFee;
+
+                                const driver = await Driver.findOne({ phoneNumber: from });
+                                if (driver) {
+                                    driver.totalDeliveries += 1;
+                                    driver.totalEarnings += deliveryFee;
+                                    driver.cashCollected += cashToCollect;
+                                    driver.walletBalance = driver.totalEarnings - driver.cashCollected;
+                                    await driver.save();
+                                }
+
                                 let mapsLink = `https://maps.google.com/?q=${orderToClaim.location.latitude},${orderToClaim.location.longitude}`;
-                                replyText = `✅ تم تخصيص الطلب لك بنجاح!\n\nرقم العميل للتواصل: ${orderToClaim.customerPhone}\nالموقع: ${mapsLink}\n\nالرجاء التوجه للمطعم فوراً لاستلام الطلب.`;
+                                replyText = `✅ تم تخصيص الطلب لك بنجاح!\n\nرقم العميل للتواصل: ${orderToClaim.customerPhone}\nالموقع: ${mapsLink}\nإجمالي تحصيل الكاش من العميل: ${cashToCollect} ريال\n\nالرجاء التوجه للمطعم فوراً لاستلام الطلب.`;
                             }
                         } catch (e) {
                             replyText = "حدث خطأ أثناء معالجة القبول.";
                         }
                     } else {
                         replyText = "صيغة غير صحيحة. أرسل: قبول [رقم الطلب]";
+                    }
+                } else if (msg_body.trim() === "محفظتي") {
+                    try {
+                        const driver = await Driver.findOne({ phoneNumber: from });
+                        if (driver) {
+                            let owedToApp = Math.abs(driver.walletBalance);
+                            replyText = `💼 *محفظة المندوب (${driver.driverName})*\n\n`;
+                            replyText += `📦 الطلبات المنجزة: ${driver.totalDeliveries}\n`;
+                            replyText += `💰 أرباحك (رسوم التوصيل): ${driver.totalEarnings} ريال\n`;
+                            replyText += `💵 الكاش المُحصل (العهدة): ${driver.cashCollected} ريال\n\n`;
+                            replyText += `🔻 المطلوب توريده لإدارة التطبيق: ${owedToApp} ريال`;
+                        } else {
+                            replyText = "لم يتم العثور على حسابك في قاعدة بيانات المناديب.";
+                        }
+                    } catch (e) {
+                        replyText = "حدث خطأ أثناء عرض المحفظة.";
+                    }
+                } else if (msg_body.trim().startsWith("حساب المندوب")) {
+                    let parts = msg_body.split(" ");
+                    if (parts.length >= 3) {
+                        let phone = parts[parts.length - 1];
+                        try {
+                            const driver = await Driver.findOne({ phoneNumber: phone });
+                            if (driver) {
+                                let owedToApp = Math.abs(driver.walletBalance);
+                                replyText = `💼 *حساب المندوب (${driver.driverName} - ${phone})*\nالطلبات: ${driver.totalDeliveries}\nأرباحه: ${driver.totalEarnings}\nالعهدة (كاش): ${driver.cashCollected}\nالمطلوب توريده منه: ${owedToApp} ريال`;
+                            } else {
+                                replyText = "رقم المندوب غير موجود.";
+                            }
+                        } catch (e) {
+                            replyText = "حدث خطأ أثناء البحث.";
+                        }
+                    } else {
+                        replyText = "صيغة غير صحيحة. استخدم: حساب المندوب [رقم المندوب]";
                     }
                 } else if (msg_body.trim().startsWith("إضافة مطعم")) {
                     let parts = msg_body.split(" ");
