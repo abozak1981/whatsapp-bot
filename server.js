@@ -3,6 +3,7 @@ const express = require("express");
 const axios = require("axios");
 const connectDB = require("./database");
 const User = require("./models/User");
+const Order = require("./models/Order");
 const app = express();
 app.use(express.json());
 
@@ -40,25 +41,50 @@ app.post("/webhook", async (req, res) => {
             body.entry[0].changes[0].value.messages &&
             body.entry[0].changes[0].value.messages[0]
         ) {
+            let message = body.entry[0].changes[0].value.messages[0];
             let phone_number_id = body.entry[0].changes[0].value.metadata.phone_number_id;
-            let from = body.entry[0].changes[0].value.messages[0].from; // sender's phone number
-            let msg_body = body.entry[0].changes[0].value.messages[0].text.body; // text message content
-
-            console.log(`📩 Received message: "${msg_body}" from ${from}`);
+            let from = message.from; // sender's phone number
 
             // Save user to database
             try {
                 let user = await User.findOne({ phoneNumber: from });
                 if (!user) {
-                    user = await User.create({ phoneNumber: from });
+                    await User.create({ phoneNumber: from });
                     console.log(`🆕 New user saved: ${from}`);
                 } else {
                     user.lastMessageAt = Date.now();
                     await user.save();
-                    console.log(`🔄 Existing user updated: ${from}`);
                 }
             } catch (dbError) {
                 console.error("❌ Database Error:", dbError.message);
+            }
+
+            let replyText = "مرحباً بكم في متجرنا!";
+
+            if (message.type === "order") {
+                console.log(`🛒 Received an order from ${from}`);
+                let orderItems = message.order.product_items;
+                
+                try {
+                    // Save the order
+                    await Order.create({
+                        customerPhone: from,
+                        items: orderItems,
+                        status: "Pending"
+                    });
+                    console.log(`✅ Order saved to database for ${from}`);
+                    replyText = "تم استلام طلبك بنجاح! جاري التجهيز. برجاء إرسال موقعك (Location) لتأكيد التوصيل.";
+                } catch (err) {
+                    console.error("Error saving order:", err);
+                    replyText = "عذراً، حدث خطأ أثناء تسجيل طلبك.";
+                }
+            } else if (message.type === "text") {
+                let msg_body = message.text.body;
+                console.log(`📩 Received text: "${msg_body}" from ${from}`);
+                replyText = `أهلاً بك! لعرض منتجاتنا، يرجى الضغط على زر (التسوق - Shop) بأعلى المحادثة واختيار ما يناسبك وإرسال السلة.`;
+            } else if (message.type === "location") {
+                console.log(`📍 Received location from ${from}`);
+                replyText = "تم استلام موقعك بنجاح! سيصلك المندوب في أسرع وقت.";
             }
 
             // Send a reply
@@ -69,7 +95,7 @@ app.post("/webhook", async (req, res) => {
                     data: {
                         messaging_product: "whatsapp",
                         to: from,
-                        text: { body: `أهلاً بك! لقد استلمنا رسالتك: "${msg_body}"\nهذا رد تلقائي من البوت.` },
+                        text: { body: replyText },
                     },
                     headers: {
                         Authorization: `Bearer ${GRAPH_API_TOKEN}`,
