@@ -6,6 +6,7 @@ const User = require("./models/User");
 const Order = require("./models/Order");
 const Ledger = require("./models/Ledger");
 const Store = require("./models/Store");
+const Driver = require("./models/Driver");
 const app = express();
 app.use(express.json());
 
@@ -176,12 +177,86 @@ app.post("/webhook", async (req, res) => {
                     } else {
                         replyText = "صيغة غير صحيحة. استخدم:\nإضافة مطعم [الرمز] [الاسم] [رقم الواتساب بالدولة]";
                     }
+                } else if (msg_body.trim().startsWith("إضافة مندوب")) {
+                    let parts = msg_body.split(" ");
+                    if (parts.length >= 3) {
+                        let phone = parts[parts.length - 1];
+                        let name = parts.slice(2, parts.length - 1).join(" ");
+                        try {
+                            await Driver.findOneAndUpdate(
+                                { phoneNumber: phone },
+                                { driverName: name },
+                                { upsert: true }
+                            );
+                            replyText = `✅ تم تسجيل المندوب بنجاح:\nالاسم: ${name}\nالرقم: ${phone}`;
+                        } catch (e) {
+                            replyText = "حدث خطأ أثناء حفظ بيانات المندوب.";
+                        }
+                    } else {
+                        replyText = "صيغة غير صحيحة. استخدم:\nإضافة مندوب [الاسم] [رقم الواتساب بالدولة]";
+                    }
                 } else {
                     replyText = `أهلاً بك! لعرض منتجاتنا، يرجى الضغط على زر (التسوق - Shop) بأعلى المحادثة واختيار ما يناسبك وإرسال السلة.`;
                 }
             } else if (message.type === "location") {
                 console.log(`📍 Received location from ${from}`);
-                replyText = "تم استلام موقعك بنجاح! سيصلك المندوب في أسرع وقت.";
+                let lat = message.location.latitude;
+                let long = message.location.longitude;
+                let mapsLink = `https://maps.google.com/?q=${lat},${long}`;
+
+                try {
+                    // Find customer's pending order
+                    const pendingOrder = await Order.findOne({ customerPhone: from, status: "Pending" }).sort({ createdAt: -1 });
+                    
+                    if (pendingOrder) {
+                        // Find any available driver
+                        const driver = await Driver.findOne({}); 
+                        
+                        // Extract store code
+                        let storeCode = "UNKNOWN";
+                        if (pendingOrder.items && pendingOrder.items.length > 0) {
+                            let item = pendingOrder.items[0];
+                            if (item.product_retailer_id && item.product_retailer_id.includes("_")) {
+                                storeCode = item.product_retailer_id.split("_")[0];
+                            }
+                        }
+
+                        // Send message to Driver
+                        if (driver && driver.phoneNumber) {
+                            let driverMsg = `🛵 *مهمة توصيل جديدة!*\n\n`;
+                            driverMsg += `المطعم (رمز المطعم): ${storeCode}\n`;
+                            driverMsg += `رقم العميل للتواصل: ${from}\n`;
+                            driverMsg += `📍 الموقع: ${mapsLink}\n\n`;
+                            driverMsg += `الرجاء التوجه للمطعم لاستلام الطلب وتوصيله.`;
+
+                            await axios({
+                                method: "POST",
+                                url: `https://graph.facebook.com/v18.0/${phone_number_id}/messages`,
+                                data: {
+                                    messaging_product: "whatsapp",
+                                    to: driver.phoneNumber,
+                                    text: { body: driverMsg },
+                                },
+                                headers: {
+                                    Authorization: `Bearer ${GRAPH_API_TOKEN}`,
+                                    "Content-Type": "application/json",
+                                },
+                            });
+                        }
+
+                        // Update order status
+                        pendingOrder.status = "Confirmed";
+                        pendingOrder.location = { latitude: lat, longitude: long };
+                        await pendingOrder.save();
+
+                        replyText = "تم تأكيد طلبك وموقعك بنجاح! المندوب في طريقه إليك 🛵.";
+                    } else {
+                        replyText = "لم يتم العثور على طلب قيد التنفيذ. يرجى إرسال السلة أولاً.";
+                    }
+                } catch (e) {
+                    console.error("Error dispatching driver:", e);
+                    replyText = "تم استلام موقعك، ولكن حدث خطأ أثناء توجيه المندوب.";
+                }
             }
 
             // Send a reply
