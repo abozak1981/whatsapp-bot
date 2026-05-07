@@ -2,6 +2,9 @@ const mongoose = require("mongoose");
 
 const orderSchema = new mongoose.Schema(
     {
+        shortId: {
+            type: String,
+        },
         customerPhone: {
             type: String,
             required: true,
@@ -24,9 +27,20 @@ const orderSchema = new mongoose.Schema(
             longitude: String,
             address: String,
         },
+        assignedDriver: {
+            type: String,
+            default: null,
+        }
     },
     { timestamps: true }
 );
+
+orderSchema.pre('save', function(next) {
+    if (!this.shortId) {
+        this.shortId = Math.floor(1000 + Math.random() * 9000).toString();
+    }
+    next();
+});
 
 const Order = mongoose.model("Order", orderSchema);
 

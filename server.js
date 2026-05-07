@@ -157,6 +157,34 @@ app.post("/webhook", async (req, res) => {
                     } catch(e) {
                         replyText = "حدث خطأ في حساب الأرباح.";
                     }
+                } else if (msg_body.trim().startsWith("قبول")) {
+                    let parts = msg_body.split(" ");
+                    if (parts.length >= 2) {
+                        let shortId = parts[1];
+                        try {
+                            const orderToClaim = await Order.findOne({ shortId: shortId });
+                            if (!orderToClaim) {
+                                replyText = "رقم الطلب غير صحيح أو غير موجود.";
+                            } else if (orderToClaim.assignedDriver) {
+                                if (orderToClaim.assignedDriver === from) {
+                                    replyText = "أنت قمت باستلام هذا الطلب بالفعل!";
+                                } else {
+                                    replyText = "عذراً، هذا الطلب تم استلامه من قبل مندوب آخر. حظاً أوفر!";
+                                }
+                            } else {
+                                // Assign the driver
+                                orderToClaim.assignedDriver = from;
+                                await orderToClaim.save();
+
+                                let mapsLink = `https://maps.google.com/?q=${orderToClaim.location.latitude},${orderToClaim.location.longitude}`;
+                                replyText = `✅ تم تخصيص الطلب لك بنجاح!\n\nرقم العميل للتواصل: ${orderToClaim.customerPhone}\nالموقع: ${mapsLink}\n\nالرجاء التوجه للمطعم فوراً لاستلام الطلب.`;
+                            }
+                        } catch (e) {
+                            replyText = "حدث خطأ أثناء معالجة القبول.";
+                        }
+                    } else {
+                        replyText = "صيغة غير صحيحة. أرسل: قبول [رقم الطلب]";
+                    }
                 } else if (msg_body.trim().startsWith("إضافة مطعم")) {
                     let parts = msg_body.split(" ");
                     if (parts.length >= 4) {
@@ -209,8 +237,10 @@ app.post("/webhook", async (req, res) => {
                     const pendingOrder = await Order.findOne({ customerPhone: from, status: "Pending" }).sort({ createdAt: -1 });
                     
                     if (pendingOrder) {
-                        // Find any available driver
-                        const driver = await Driver.findOne({}); 
+                        // Update order status and location
+                        pendingOrder.status = "Confirmed";
+                        pendingOrder.location = { latitude: lat, longitude: long };
+                        await pendingOrder.save(); // This generates shortId
                         
                         // Extract store code
                         let storeCode = "UNKNOWN";
@@ -221,35 +251,38 @@ app.post("/webhook", async (req, res) => {
                             }
                         }
 
-                        // Send message to Driver
-                        if (driver && driver.phoneNumber) {
-                            let driverMsg = `🛵 *مهمة توصيل جديدة!*\n\n`;
-                            driverMsg += `المطعم (رمز المطعم): ${storeCode}\n`;
-                            driverMsg += `رقم العميل للتواصل: ${from}\n`;
-                            driverMsg += `📍 الموقع: ${mapsLink}\n\n`;
-                            driverMsg += `الرجاء التوجه للمطعم لاستلام الطلب وتوصيله.`;
+                        // Broadcast to ALL drivers
+                        const drivers = await Driver.find({ isAvailable: true }); 
+                        
+                        let driverMsg = `🚨 *إشعار توصيل جديد!*\n\n`;
+                        driverMsg += `المطعم: ${storeCode}\n`;
+                        driverMsg += `الموقع الجغرافي: ${mapsLink}\n\n`;
+                        driverMsg += `لقبول هذا الطلب، أرسل الكود التالي:\n`;
+                        driverMsg += `قبول ${pendingOrder.shortId}`;
 
-                            await axios({
-                                method: "POST",
-                                url: `https://graph.facebook.com/v18.0/${phone_number_id}/messages`,
-                                data: {
-                                    messaging_product: "whatsapp",
-                                    to: driver.phoneNumber,
-                                    text: { body: driverMsg },
-                                },
-                                headers: {
-                                    Authorization: `Bearer ${GRAPH_API_TOKEN}`,
-                                    "Content-Type": "application/json",
-                                },
-                            });
+                        for (let driver of drivers) {
+                            if (driver.phoneNumber) {
+                                try {
+                                    await axios({
+                                        method: "POST",
+                                        url: `https://graph.facebook.com/v18.0/${phone_number_id}/messages`,
+                                        data: {
+                                            messaging_product: "whatsapp",
+                                            to: driver.phoneNumber,
+                                            text: { body: driverMsg },
+                                        },
+                                        headers: {
+                                            Authorization: `Bearer ${GRAPH_API_TOKEN}`,
+                                            "Content-Type": "application/json",
+                                        },
+                                    });
+                                } catch (e) {
+                                    console.error(`Failed to send to driver ${driver.phoneNumber}`);
+                                }
+                            }
                         }
 
-                        // Update order status
-                        pendingOrder.status = "Confirmed";
-                        pendingOrder.location = { latitude: lat, longitude: long };
-                        await pendingOrder.save();
-
-                        replyText = "تم تأكيد طلبك وموقعك بنجاح! المندوب في طريقه إليك 🛵.";
+                        replyText = "تم تأكيد طلبك وموقعك بنجاح! جاري توجيه المندوب إليك 🛵.";
                     } else {
                         replyText = "لم يتم العثور على طلب قيد التنفيذ. يرجى إرسال السلة أولاً.";
                     }
