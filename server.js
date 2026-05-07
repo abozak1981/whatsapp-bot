@@ -5,6 +5,7 @@ const connectDB = require("./database");
 const User = require("./models/User");
 const Order = require("./models/Order");
 const Ledger = require("./models/Ledger");
+const Store = require("./models/Store");
 const app = express();
 app.use(express.json());
 
@@ -102,7 +103,36 @@ app.post("/webhook", async (req, res) => {
 
                     console.log(`✅ Order & Ledger saved for ${from}. Profit: ${commissionAmount}`);
                     
-                    // NOTE: Here we would add code to send a WhatsApp message to the Store Owner using storeCode
+                    try {
+                        const store = await Store.findOne({ storeCode: storeCode });
+                        if (store && store.phoneNumber) {
+                            let storeMessage = `🔔 *طلب جديد من التطبيق!*\n\n`;
+                            storeMessage += `رقم العميل: ${from}\n`;
+                            storeMessage += `إجمالي الطلب: ${totalAmount} ريال\n`;
+                            storeMessage += `عمولة التطبيق: ${commissionAmount} ريال\n`;
+                            storeMessage += `الصافي للمطعم: ${storeOwedAmount} ريال\n\n`;
+                            storeMessage += `الرجاء تجهيز الطلب في أسرع وقت.`;
+
+                            await axios({
+                                method: "POST",
+                                url: `https://graph.facebook.com/v18.0/${phone_number_id}/messages`,
+                                data: {
+                                    messaging_product: "whatsapp",
+                                    to: store.phoneNumber,
+                                    text: { body: storeMessage },
+                                },
+                                headers: {
+                                    Authorization: `Bearer ${GRAPH_API_TOKEN}`,
+                                    "Content-Type": "application/json",
+                                },
+                            });
+                            console.log(`✅ Order forwarded to Store ${storeCode} at ${store.phoneNumber}`);
+                        } else {
+                            console.log(`⚠️ No phone number found for Store ${storeCode}, skipping forwarding.`);
+                        }
+                    } catch (forwardErr) {
+                        console.error("❌ Error forwarding to store:", forwardErr.message);
+                    }
 
                     replyText = `تم استلام طلبك بنجاح! الإجمالي: ${totalAmount}. برجاء إرسال موقعك (Location) لتأكيد التوصيل.`;
                 } catch (err) {
@@ -125,6 +155,26 @@ app.post("/webhook", async (req, res) => {
                         replyText = `📊 تقرير الأرباح:\n- إجمالي المبيعات: ${totalSales}\n- إجمالي أرباحك (العمولة): ${totalProfit}`;
                     } catch(e) {
                         replyText = "حدث خطأ في حساب الأرباح.";
+                    }
+                } else if (msg_body.trim().startsWith("إضافة مطعم")) {
+                    let parts = msg_body.split(" ");
+                    if (parts.length >= 4) {
+                        let code = parts[2];
+                        let phone = parts[parts.length - 1];
+                        let name = parts.slice(3, parts.length - 1).join(" ");
+                        
+                        try {
+                            await Store.findOneAndUpdate(
+                                { storeCode: code },
+                                { storeName: name, phoneNumber: phone },
+                                { upsert: true }
+                            );
+                            replyText = `✅ تم حفظ المطعم بنجاح:\nالاسم: ${name}\nالرمز: ${code}\nالرقم: ${phone}`;
+                        } catch (e) {
+                            replyText = "حدث خطأ أثناء حفظ المطعم.";
+                        }
+                    } else {
+                        replyText = "صيغة غير صحيحة. استخدم:\nإضافة مطعم [الرمز] [الاسم] [رقم الواتساب بالدولة]";
                     }
                 } else {
                     replyText = `أهلاً بك! لعرض منتجاتنا، يرجى الضغط على زر (التسوق - Shop) بأعلى المحادثة واختيار ما يناسبك وإرسال السلة.`;
