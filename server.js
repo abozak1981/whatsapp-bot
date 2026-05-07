@@ -250,11 +250,14 @@ app.post("/webhook", async (req, res) => {
                                 replyText = `✅ تم تصفية عهدة المندوب (${driver.driverName}) بنجاح.`;
 
                                 let receiptMsg = `🧾 *سند استلام نقدية (تصفية عهدة)*\n`;
+                                receiptMsg += `🏢 مؤسسة: Blogo\n`;
+                                receiptMsg += `س.ت: 1029600671\n`;
                                 receiptMsg += `━━━━━━━━━━━━━━━━━\n`;
                                 receiptMsg += `المستلم: إدارة التطبيق\n`;
                                 receiptMsg += `المبلغ المستلم: ${owedToApp} ريال\n`;
                                 receiptMsg += `━━━━━━━━━━━━━━━━━\n`;
-                                receiptMsg += `تم تصفية عهدتك بنجاح. شكراً لجهودك!`;
+                                receiptMsg += `تم تصفية عهدتك بنجاح. شكراً لجهودك!\n`;
+                                receiptMsg += `🔗 رمز التحقق (QR): https://quickchart.io/qr?text=${encodeURIComponent('Blogo|CR:1029600671|DriverSettlement|'+owedToApp)}&size=200`;
 
                                 await axios({
                                     method: "POST",
@@ -296,12 +299,15 @@ app.post("/webhook", async (req, res) => {
                             const store = await Store.findOne({ storeCode: storeCode });
                             if (store && store.phoneNumber && totalOwedToStore > 0) {
                                 let receiptMsg = `🧾 *سند صرف مستحقات*\n`;
+                                receiptMsg += `🏢 مؤسسة: Blogo\n`;
+                                receiptMsg += `س.ت: 1029600671\n`;
                                 receiptMsg += `━━━━━━━━━━━━━━━━━\n`;
                                 receiptMsg += `المطعم: ${store.storeName}\n`;
                                 receiptMsg += `المبلغ المحول: ${totalOwedToStore} ريال\n`;
                                 receiptMsg += `إجمالي عمولة التطبيق المخصومة: ${totalCommission} ريال\n`;
                                 receiptMsg += `━━━━━━━━━━━━━━━━━\n`;
-                                receiptMsg += `تم تحويل مستحقاتكم بنجاح. شكراً لتعاملكم معنا.`;
+                                receiptMsg += `تم تحويل مستحقاتكم بنجاح. شكراً لتعاملكم معنا.\n`;
+                                receiptMsg += `🔗 رمز التحقق (QR): https://quickchart.io/qr?text=${encodeURIComponent('Blogo|CR:1029600671|StoreSettlement|'+totalOwedToStore)}&size=200`;
 
                                 await axios({
                                     method: "POST",
@@ -418,13 +424,17 @@ app.post("/webhook", async (req, res) => {
                         }
 
                         // Send confirmation and E-Invoice to customer
-                        let invoiceMsg = `🧾 *فاتورة إلكترونية (E-Invoice)*\n`;
+                        let invoiceMsg = `🧾 *فاتورة ضريبية مبسطة (E-Invoice)*\n`;
+                        invoiceMsg += `🏢 متجر: Blogo\n`;
+                        invoiceMsg += `س.ت: 1029600671\n`;
+                        invoiceMsg += `الرقم الضريبي: [سيتم إضافته لاحقاً]\n`;
                         invoiceMsg += `━━━━━━━━━━━━━━━━━\n`;
                         invoiceMsg += `رقم الطلب: #${pendingOrder.shortId}\n`;
                         invoiceMsg += `المطعم: ${storeCode}\n`;
                         invoiceMsg += `حالة الطلب: مؤكد وجاري التوصيل\n`;
                         invoiceMsg += `━━━━━━━━━━━━━━━━━\n`;
-                        invoiceMsg += `نتمنى لك وجبة شهية! المندوب في طريقه إليك 🛵.`;
+                        invoiceMsg += `نتمنى لك وجبة شهية! المندوب في طريقه إليك 🛵.\n`;
+                        invoiceMsg += `🔗 الباركود (QR): https://quickchart.io/qr?text=${encodeURIComponent('Blogo|CR:1029600671|Order#'+pendingOrder.shortId)}&size=200`;
 
                         replyText = invoiceMsg;
                     } else {
