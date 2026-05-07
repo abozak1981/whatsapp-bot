@@ -4,6 +4,7 @@ const axios = require("axios");
 const connectDB = require("./database");
 const User = require("./models/User");
 const Order = require("./models/Order");
+const Ledger = require("./models/Ledger");
 const app = express();
 app.use(express.json());
 
@@ -64,16 +65,46 @@ app.post("/webhook", async (req, res) => {
             if (message.type === "order") {
                 console.log(`🛒 Received an order from ${from}`);
                 let orderItems = message.order.product_items;
+                let totalAmount = 0;
+                let storeCode = "UNKNOWN";
+
+                // Calculate total and extract storeCode
+                orderItems.forEach(item => {
+                    totalAmount += (parseFloat(item.item_price) * parseInt(item.quantity));
+                    // Assuming retailer id is like "KFC_meal_1", we extract "KFC"
+                    if (item.product_retailer_id && item.product_retailer_id.includes("_")) {
+                        storeCode = item.product_retailer_id.split("_")[0];
+                    }
+                });
+
+                // Calculate Commission
+                let commissionRate = process.env.COMMISSION_RATE ? parseFloat(process.env.COMMISSION_RATE) : 0.10;
+                let commissionAmount = totalAmount * commissionRate;
+                let storeOwedAmount = totalAmount - commissionAmount;
                 
                 try {
                     // Save the order
-                    await Order.create({
+                    const newOrder = await Order.create({
                         customerPhone: from,
                         items: orderItems,
                         status: "Pending"
                     });
-                    console.log(`✅ Order saved to database for ${from}`);
-                    replyText = "تم استلام طلبك بنجاح! جاري التجهيز. برجاء إرسال موقعك (Location) لتأكيد التوصيل.";
+
+                    // Save the ledger
+                    await Ledger.create({
+                        orderId: newOrder._id,
+                        storeCode: storeCode,
+                        totalAmount: totalAmount,
+                        commissionAmount: commissionAmount,
+                        storeOwedAmount: storeOwedAmount,
+                        isPaidToStore: false
+                    });
+
+                    console.log(`✅ Order & Ledger saved for ${from}. Profit: ${commissionAmount}`);
+                    
+                    // NOTE: Here we would add code to send a WhatsApp message to the Store Owner using storeCode
+
+                    replyText = `تم استلام طلبك بنجاح! الإجمالي: ${totalAmount}. برجاء إرسال موقعك (Location) لتأكيد التوصيل.`;
                 } catch (err) {
                     console.error("Error saving order:", err);
                     replyText = "عذراً، حدث خطأ أثناء تسجيل طلبك.";
@@ -81,7 +112,23 @@ app.post("/webhook", async (req, res) => {
             } else if (message.type === "text") {
                 let msg_body = message.text.body;
                 console.log(`📩 Received text: "${msg_body}" from ${from}`);
-                replyText = `أهلاً بك! لعرض منتجاتنا، يرجى الضغط على زر (التسوق - Shop) بأعلى المحادثة واختيار ما يناسبك وإرسال السلة.`;
+                
+                if (msg_body.trim() === "أرباحي") {
+                    try {
+                        const ledgers = await Ledger.find({});
+                        let totalProfit = 0;
+                        let totalSales = 0;
+                        ledgers.forEach(l => {
+                            totalProfit += l.commissionAmount;
+                            totalSales += l.totalAmount;
+                        });
+                        replyText = `📊 تقرير الأرباح:\n- إجمالي المبيعات: ${totalSales}\n- إجمالي أرباحك (العمولة): ${totalProfit}`;
+                    } catch(e) {
+                        replyText = "حدث خطأ في حساب الأرباح.";
+                    }
+                } else {
+                    replyText = `أهلاً بك! لعرض منتجاتنا، يرجى الضغط على زر (التسوق - Shop) بأعلى المحادثة واختيار ما يناسبك وإرسال السلة.`;
+                }
             } else if (message.type === "location") {
                 console.log(`📍 Received location from ${from}`);
                 replyText = "تم استلام موقعك بنجاح! سيصلك المندوب في أسرع وقت.";
