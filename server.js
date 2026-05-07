@@ -235,6 +235,91 @@ app.post("/webhook", async (req, res) => {
                     } else {
                         replyText = "صيغة غير صحيحة. استخدم: حساب المندوب [رقم المندوب]";
                     }
+                } else if (msg_body.trim().startsWith("تصفية المندوب")) {
+                    let parts = msg_body.split(" ");
+                    if (parts.length >= 3) {
+                        let phone = parts[parts.length - 1];
+                        try {
+                            const driver = await Driver.findOne({ phoneNumber: phone });
+                            if (driver) {
+                                let owedToApp = Math.abs(driver.walletBalance);
+                                driver.cashCollected = driver.totalEarnings; // Resets balance to 0
+                                driver.walletBalance = 0;
+                                await driver.save();
+
+                                replyText = `✅ تم تصفية عهدة المندوب (${driver.driverName}) بنجاح.`;
+
+                                let receiptMsg = `🧾 *سند استلام نقدية (تصفية عهدة)*\n`;
+                                receiptMsg += `━━━━━━━━━━━━━━━━━\n`;
+                                receiptMsg += `المستلم: إدارة التطبيق\n`;
+                                receiptMsg += `المبلغ المستلم: ${owedToApp} ريال\n`;
+                                receiptMsg += `━━━━━━━━━━━━━━━━━\n`;
+                                receiptMsg += `تم تصفية عهدتك بنجاح. شكراً لجهودك!`;
+
+                                await axios({
+                                    method: "POST",
+                                    url: `https://graph.facebook.com/v18.0/${phone_number_id}/messages`,
+                                    data: {
+                                        messaging_product: "whatsapp",
+                                        to: driver.phoneNumber,
+                                        text: { body: receiptMsg },
+                                    },
+                                    headers: { Authorization: `Bearer ${GRAPH_API_TOKEN}`, "Content-Type": "application/json" }
+                                });
+                            } else {
+                                replyText = "رقم المندوب غير موجود.";
+                            }
+                        } catch (e) {
+                            replyText = "حدث خطأ أثناء تصفية المندوب.";
+                        }
+                    } else {
+                        replyText = "صيغة غير صحيحة. استخدم: تصفية المندوب [رقم المندوب]";
+                    }
+                } else if (msg_body.trim().startsWith("تصفية المطعم")) {
+                    let parts = msg_body.split(" ");
+                    if (parts.length >= 3) {
+                        let storeCode = parts[parts.length - 1];
+                        try {
+                            const ledgers = await Ledger.find({ storeCode: storeCode, isPaidToStore: false });
+                            let totalOwedToStore = 0;
+                            let totalCommission = 0;
+                            
+                            for (let ledger of ledgers) {
+                                totalOwedToStore += ledger.storeOwedAmount;
+                                totalCommission += ledger.commissionAmount;
+                                ledger.isPaidToStore = true;
+                                await ledger.save();
+                            }
+
+                            replyText = `✅ تم تصفية حساب المطعم (${storeCode}).\nإجمالي المبلغ المصروف: ${totalOwedToStore} ريال.`;
+
+                            const store = await Store.findOne({ storeCode: storeCode });
+                            if (store && store.phoneNumber && totalOwedToStore > 0) {
+                                let receiptMsg = `🧾 *سند صرف مستحقات*\n`;
+                                receiptMsg += `━━━━━━━━━━━━━━━━━\n`;
+                                receiptMsg += `المطعم: ${store.storeName}\n`;
+                                receiptMsg += `المبلغ المحول: ${totalOwedToStore} ريال\n`;
+                                receiptMsg += `إجمالي عمولة التطبيق المخصومة: ${totalCommission} ريال\n`;
+                                receiptMsg += `━━━━━━━━━━━━━━━━━\n`;
+                                receiptMsg += `تم تحويل مستحقاتكم بنجاح. شكراً لتعاملكم معنا.`;
+
+                                await axios({
+                                    method: "POST",
+                                    url: `https://graph.facebook.com/v18.0/${phone_number_id}/messages`,
+                                    data: {
+                                        messaging_product: "whatsapp",
+                                        to: store.phoneNumber,
+                                        text: { body: receiptMsg },
+                                    },
+                                    headers: { Authorization: `Bearer ${GRAPH_API_TOKEN}`, "Content-Type": "application/json" }
+                                });
+                            }
+                        } catch (e) {
+                            replyText = "حدث خطأ أثناء تصفية المطعم.";
+                        }
+                    } else {
+                        replyText = "صيغة غير صحيحة. استخدم: تصفية المطعم [رمز المطعم]";
+                    }
                 } else if (msg_body.trim().startsWith("إضافة مطعم")) {
                     let parts = msg_body.split(" ");
                     if (parts.length >= 4) {
@@ -332,7 +417,16 @@ app.post("/webhook", async (req, res) => {
                             }
                         }
 
-                        replyText = "تم تأكيد طلبك وموقعك بنجاح! جاري توجيه المندوب إليك 🛵.";
+                        // Send confirmation and E-Invoice to customer
+                        let invoiceMsg = `🧾 *فاتورة إلكترونية (E-Invoice)*\n`;
+                        invoiceMsg += `━━━━━━━━━━━━━━━━━\n`;
+                        invoiceMsg += `رقم الطلب: #${pendingOrder.shortId}\n`;
+                        invoiceMsg += `المطعم: ${storeCode}\n`;
+                        invoiceMsg += `حالة الطلب: مؤكد وجاري التوصيل\n`;
+                        invoiceMsg += `━━━━━━━━━━━━━━━━━\n`;
+                        invoiceMsg += `نتمنى لك وجبة شهية! المندوب في طريقه إليك 🛵.`;
+
+                        replyText = invoiceMsg;
                     } else {
                         replyText = "لم يتم العثور على طلب قيد التنفيذ. يرجى إرسال السلة أولاً.";
                     }
