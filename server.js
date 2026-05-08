@@ -7,6 +7,7 @@ const Order = require("./models/Order");
 const Ledger = require("./models/Ledger");
 const Store = require("./models/Store");
 const Driver = require("./models/Driver");
+const Settings = require("./models/Settings");
 const app = express();
 app.use(express.json());
 
@@ -249,15 +250,19 @@ app.post("/webhook", async (req, res) => {
 
                                 replyText = `✅ تم تصفية عهدة المندوب (${driver.driverName}) بنجاح.`;
 
+                                let appSettings = await Settings.findOne({ key: "APP_SETTINGS" });
+                                if (!appSettings) appSettings = { companyName: "Blogo", crNumber: "1029600671", taxNumber: "غير محدد" };
+
                                 let receiptMsg = `🧾 *سند استلام نقدية (تصفية عهدة)*\n`;
-                                receiptMsg += `🏢 مؤسسة: Blogo\n`;
-                                receiptMsg += `س.ت: 1029600671\n`;
+                                receiptMsg += `🏢 مؤسسة: ${appSettings.companyName}\n`;
+                                receiptMsg += `س.ت: ${appSettings.crNumber}\n`;
+                                receiptMsg += `الرقم الضريبي: ${appSettings.taxNumber}\n`;
                                 receiptMsg += `━━━━━━━━━━━━━━━━━\n`;
                                 receiptMsg += `المستلم: إدارة التطبيق\n`;
                                 receiptMsg += `المبلغ المستلم: ${owedToApp} ريال\n`;
                                 receiptMsg += `━━━━━━━━━━━━━━━━━\n`;
                                 receiptMsg += `تم تصفية عهدتك بنجاح. شكراً لجهودك!\n`;
-                                receiptMsg += `🔗 رمز التحقق (QR): https://quickchart.io/qr?text=${encodeURIComponent('Blogo|CR:1029600671|DriverSettlement|'+owedToApp)}&size=200`;
+                                receiptMsg += `🔗 رمز التحقق (QR): https://quickchart.io/qr?text=${encodeURIComponent(`${appSettings.companyName}|CR:${appSettings.crNumber}|VAT:${appSettings.taxNumber}|DriverSettlement|${owedToApp}`)}&size=200`;
 
                                 await axios({
                                     method: "POST",
@@ -298,16 +303,20 @@ app.post("/webhook", async (req, res) => {
 
                             const store = await Store.findOne({ storeCode: storeCode });
                             if (store && store.phoneNumber && totalOwedToStore > 0) {
+                                let appSettings = await Settings.findOne({ key: "APP_SETTINGS" });
+                                if (!appSettings) appSettings = { companyName: "Blogo", crNumber: "1029600671", taxNumber: "غير محدد" };
+
                                 let receiptMsg = `🧾 *سند صرف مستحقات*\n`;
-                                receiptMsg += `🏢 مؤسسة: Blogo\n`;
-                                receiptMsg += `س.ت: 1029600671\n`;
+                                receiptMsg += `🏢 مؤسسة: ${appSettings.companyName}\n`;
+                                receiptMsg += `س.ت: ${appSettings.crNumber}\n`;
+                                receiptMsg += `الرقم الضريبي: ${appSettings.taxNumber}\n`;
                                 receiptMsg += `━━━━━━━━━━━━━━━━━\n`;
                                 receiptMsg += `المطعم: ${store.storeName}\n`;
                                 receiptMsg += `المبلغ المحول: ${totalOwedToStore} ريال\n`;
                                 receiptMsg += `إجمالي عمولة التطبيق المخصومة: ${totalCommission} ريال\n`;
                                 receiptMsg += `━━━━━━━━━━━━━━━━━\n`;
                                 receiptMsg += `تم تحويل مستحقاتكم بنجاح. شكراً لتعاملكم معنا.\n`;
-                                receiptMsg += `🔗 رمز التحقق (QR): https://quickchart.io/qr?text=${encodeURIComponent('Blogo|CR:1029600671|StoreSettlement|'+totalOwedToStore)}&size=200`;
+                                receiptMsg += `🔗 رمز التحقق (QR): https://quickchart.io/qr?text=${encodeURIComponent(`${appSettings.companyName}|CR:${appSettings.crNumber}|VAT:${appSettings.taxNumber}|StoreSettlement|${totalOwedToStore}`)}&size=200`;
 
                                 await axios({
                                     method: "POST",
@@ -423,18 +432,22 @@ app.post("/webhook", async (req, res) => {
                             }
                         }
 
+                        // Fetch Settings
+                        let appSettings = await Settings.findOne({ key: "APP_SETTINGS" });
+                        if (!appSettings) appSettings = { companyName: "Blogo", crNumber: "1029600671", taxNumber: "غير محدد" };
+
                         // Send confirmation and E-Invoice to customer
                         let invoiceMsg = `🧾 *فاتورة ضريبية مبسطة (E-Invoice)*\n`;
-                        invoiceMsg += `🏢 متجر: Blogo\n`;
-                        invoiceMsg += `س.ت: 1029600671\n`;
-                        invoiceMsg += `الرقم الضريبي: [سيتم إضافته لاحقاً]\n`;
+                        invoiceMsg += `🏢 متجر: ${appSettings.companyName}\n`;
+                        invoiceMsg += `س.ت: ${appSettings.crNumber}\n`;
+                        invoiceMsg += `الرقم الضريبي: ${appSettings.taxNumber}\n`;
                         invoiceMsg += `━━━━━━━━━━━━━━━━━\n`;
                         invoiceMsg += `رقم الطلب: #${pendingOrder.shortId}\n`;
                         invoiceMsg += `المطعم: ${storeCode}\n`;
                         invoiceMsg += `حالة الطلب: مؤكد وجاري التوصيل\n`;
                         invoiceMsg += `━━━━━━━━━━━━━━━━━\n`;
                         invoiceMsg += `نتمنى لك وجبة شهية! المندوب في طريقه إليك 🛵.\n`;
-                        invoiceMsg += `🔗 الباركود (QR): https://quickchart.io/qr?text=${encodeURIComponent('Blogo|CR:1029600671|Order#'+pendingOrder.shortId)}&size=200`;
+                        invoiceMsg += `🔗 الباركود (QR): https://quickchart.io/qr?text=${encodeURIComponent(`${appSettings.companyName}|CR:${appSettings.crNumber}|VAT:${appSettings.taxNumber}|Order#${pendingOrder.shortId}`)}&size=200`;
 
                         replyText = invoiceMsg;
                     } else {
