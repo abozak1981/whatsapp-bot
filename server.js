@@ -355,6 +355,26 @@ app.post("/webhook", async (req, res) => {
                     } else {
                         replyText = "صيغة غير صحيحة. استخدم:\nإضافة مطعم [الرمز] [الاسم] [رقم الواتساب بالدولة]";
                     }
+                } else if (msg_body.trim().startsWith("إعدادات الشركة")) {
+                    let parts = msg_body.split(" ");
+                    if (parts.length >= 4) {
+                        let tax = parts[parts.length - 1];
+                        let cr = parts[parts.length - 2];
+                        let name = parts.slice(2, parts.length - 2).join(" ");
+                        
+                        try {
+                            await Settings.findOneAndUpdate(
+                                { key: "APP_SETTINGS" },
+                                { companyName: name, crNumber: cr, taxNumber: tax },
+                                { upsert: true, new: true }
+                            );
+                            replyText = `✅ تم تحديث بيانات الشركة بنجاح:\nالاسم: ${name}\nالسجل: ${cr}\nالضريبي: ${tax}`;
+                        } catch (e) {
+                            replyText = "حدث خطأ أثناء حفظ الإعدادات.";
+                        }
+                    } else {
+                        replyText = "صيغة غير صحيحة. استخدم:\nإعدادات الشركة [الاسم] [رقم السجل] [الرقم الضريبي]";
+                    }
                 } else if (msg_body.trim().startsWith("إضافة مندوب")) {
                     let parts = msg_body.split(" ");
                     if (parts.length >= 3) {
