@@ -251,7 +251,7 @@ app.post("/webhook", async (req, res) => {
                                 replyText = `✅ تم تصفية عهدة المندوب (${driver.driverName}) بنجاح.`;
 
                                 let appSettings = await Settings.findOne({ key: "APP_SETTINGS" });
-                                if (!appSettings) appSettings = { companyName: "Blogo", crNumber: "1029600671", taxNumber: "غير محدد" };
+                                if (!appSettings) appSettings = { companyName: "Blogo", crNumber: "2031119149", taxNumber: "غير محدد" };
 
                                 let receiptMsg = `🧾 *سند استلام نقدية (تصفية عهدة)*\n`;
                                 receiptMsg += `🏢 مؤسسة: ${appSettings.companyName}\n`;
@@ -304,7 +304,7 @@ app.post("/webhook", async (req, res) => {
                             const store = await Store.findOne({ storeCode: storeCode });
                             if (store && store.phoneNumber && totalOwedToStore > 0) {
                                 let appSettings = await Settings.findOne({ key: "APP_SETTINGS" });
-                                if (!appSettings) appSettings = { companyName: "Blogo", crNumber: "1029600671", taxNumber: "غير محدد" };
+                                if (!appSettings) appSettings = { companyName: "Blogo", crNumber: "2031119149", taxNumber: "غير محدد" };
 
                                 let receiptMsg = `🧾 *سند صرف مستحقات*\n`;
                                 receiptMsg += `🏢 مؤسسة: ${appSettings.companyName}\n`;
@@ -454,7 +454,7 @@ app.post("/webhook", async (req, res) => {
 
                         // Fetch Settings
                         let appSettings = await Settings.findOne({ key: "APP_SETTINGS" });
-                        if (!appSettings) appSettings = { companyName: "Blogo", crNumber: "1029600671", taxNumber: "غير محدد" };
+                        if (!appSettings) appSettings = { companyName: "Blogo", crNumber: "2031119149", taxNumber: "غير محدد" };
 
                         // Send confirmation and E-Invoice to customer
                         let invoiceMsg = `🧾 *فاتورة ضريبية مبسطة (E-Invoice)*\n`;
